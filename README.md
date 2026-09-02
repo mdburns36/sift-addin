@@ -1,18 +1,29 @@
 # Send to Sift — Outlook add-in
 
-A ribbon button in **New Outlook** (and Outlook on the web) that sends the open
-email's **file attachments** into Sift — saved to your Keep inbox and dropped in
-the filing queue for review. No dragging, no saving to disk first.
+Ribbon buttons in **New Outlook** (and Outlook on the web) that send the open
+email into Sift. No dragging, no saving to disk first. Four buttons:
 
-This is milestone 1. **Send email** and **Summarize as note** buttons come next.
+- **Send attachments to Sift** — files the email's attachments into your Keep
+  inbox / filing queue.
+- **Send email to Sift** — records the email as a note with a link that reopens
+  the live thread.
+- **Summarize email as note** — an AI summary of the email as a Sift note.
+- **Send everything to Sift** — attachments filed **and** a summarized note.
+
+**Effort routing:** if the email (subject or body) carries an `SFT-<code>` for
+an effort, Sift files/tags it to that effort automatically — you don't pick.
+Otherwise attachments go to the review queue and notes to your default vault.
 
 ## How it works
 
-- The button runs a small script (`commands.js`) that reads the attachments with
-  Office.js — inside Outlook's own login, so it gets the actual file bytes.
-- It POSTs them to Sift's local bridge at `http://127.0.0.1:8137`, which Sift
-  runs whenever it's open. The bridge adds Sift's auth token and files them.
-- So **Sift must be running** on the same PC when you click the button.
+- The buttons run a small script (`commands.js`) that reads the message with
+  Office.js — inside Outlook's own login, so it gets the actual attachment bytes
+  and body text.
+- It POSTs to Sift's local bridge at `http://127.0.0.1:8137`, which Sift runs
+  whenever it's open. The bridge adds Sift's auth token, summarizes when needed,
+  and files/records everything.
+- So **Sift must be running** on the same PC when you click a button. The email
+  and note buttons also need **vault writes enabled** (Settings → Obsidian).
 
 ## One-time setup
 

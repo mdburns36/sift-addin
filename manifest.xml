@@ -14,7 +14,7 @@
   xsi:type="MailApp">
 
   <Id>aded5fc3-20af-4153-b2b2-2b63b32b405a</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.1.0.0</Version>
   <ProviderName>Sift</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Send to Sift" />
@@ -83,6 +83,54 @@
                     <FunctionName>sendAttachmentsToSift</FunctionName>
                   </Action>
                 </Control>
+
+                <Control xsi:type="Button" id="sendEmailButton">
+                  <Label resid="sendEmail.label" />
+                  <Supertip>
+                    <Title resid="sendEmail.label" />
+                    <Description resid="sendEmail.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>sendEmailToSift</FunctionName>
+                  </Action>
+                </Control>
+
+                <Control xsi:type="Button" id="summarizeNoteButton">
+                  <Label resid="summarizeNote.label" />
+                  <Supertip>
+                    <Title resid="summarizeNote.label" />
+                    <Description resid="summarizeNote.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>summarizeEmailToNote</FunctionName>
+                  </Action>
+                </Control>
+
+                <Control xsi:type="Button" id="sendEverythingButton">
+                  <Label resid="sendEverything.label" />
+                  <Supertip>
+                    <Title resid="sendEverything.label" />
+                    <Description resid="sendEverything.tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>sendEverythingToSift</FunctionName>
+                  </Action>
+                </Control>
               </Group>
             </OfficeTab>
           </ExtensionPoint>
@@ -102,9 +150,15 @@
       <bt:ShortStrings>
         <bt:String id="group.label" DefaultValue="Sift" />
         <bt:String id="sendAttachments.label" DefaultValue="Send attachments to Sift" />
+        <bt:String id="sendEmail.label" DefaultValue="Send email to Sift" />
+        <bt:String id="summarizeNote.label" DefaultValue="Summarize email as note" />
+        <bt:String id="sendEverything.label" DefaultValue="Send everything to Sift" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="sendAttachments.tip" DefaultValue="Save this email's file attachments into Sift's Keep inbox and its filing queue." />
+        <bt:String id="sendEmail.tip" DefaultValue="Record this email in Sift as a note with a link that reopens the live thread." />
+        <bt:String id="summarizeNote.tip" DefaultValue="Summarize this email into a Sift note, with a link back to the thread." />
+        <bt:String id="sendEverything.tip" DefaultValue="File the attachments and create a summarized note from this email — all at once." />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

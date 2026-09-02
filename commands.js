@@ -8,8 +8,9 @@
  * localhost from this https page is allowed because localhost is a trustworthy
  * origin; the bridge injects Sift's token and forwards to the sidecar.
  *
- * Milestone 1 ships "Send attachments". Email + summarise-to-note buttons
- * follow once this pipe is confirmed.
+ * Four buttons: send attachments, send email (stub note), summarize email as a
+ * note, and everything at once. Sift routes to the right effort by itself when
+ * the message carries an SFT- code — the add-in never knows the mapping.
  */
 
 /* eslint-disable no-undef */
@@ -43,7 +44,7 @@ async function postToSift(path, payload) {
   return resp.json();
 }
 
-/** Read the message body as plain text (for SFT- effort-code detection). */
+/** Read the message body as plain text (for SFT- code detection + summaries). */
 function getBodyText(item) {
   return new Promise((resolve) => {
     if (!item.body) return resolve("");
@@ -63,6 +64,62 @@ function getAttachmentContent(item, id) {
   });
 }
 
+/** A deep link that reopens THIS message in New Outlook / OWA. Office.js gives
+ * no web link directly, so we build the OWA read-item URL from the item id.
+ * Best-effort: if there's no item id (rare), reopen may not resolve. */
+function buildWebLink(item) {
+  try {
+    if (item.itemId) {
+      return (
+        "https://outlook.office365.com/owa/?ItemID=" +
+        encodeURIComponent(item.itemId) +
+        "&exvsurl=1&viewmodel=ReadMessageItem"
+      );
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return "";
+}
+
+/** The message metadata Sift records (sender, date, ids, reopen link). */
+function gatherEmail(item) {
+  let sender = "";
+  if (item.from) {
+    sender = item.from.displayName || item.from.emailAddress || "";
+    if (item.from.displayName && item.from.emailAddress) {
+      sender = `${item.from.displayName} <${item.from.emailAddress}>`;
+    }
+  }
+  let received = "";
+  try {
+    if (item.dateTimeCreated) received = new Date(item.dateTimeCreated).toISOString();
+  } catch (_) {
+    /* ignore */
+  }
+  return {
+    subject: item.subject || "",
+    sender,
+    received_at: received,
+    internet_message_id: item.internetMessageId || "",
+    conversation_id: item.conversationId || "",
+    web_link: buildWebLink(item),
+  };
+}
+
+/** Collect this message's file attachments as base64. */
+async function gatherAttachments(item) {
+  const files = (item.attachments || []).filter(
+    (a) => a.attachmentType === Office.MailboxEnums.AttachmentType.File && !a.isInline,
+  );
+  const out = [];
+  for (const a of files) {
+    const content = await getAttachmentContent(item, a.id);
+    out.push({ name: a.name, content_base64: content.content });
+  }
+  return out;
+}
+
 /** Show a status banner on the message. */
 function notify(text) {
   const item = Office.context.mailbox.item;
@@ -74,35 +131,88 @@ function notify(text) {
   });
 }
 
+function effortSuffix(res) {
+  return res && res.effort_tag ? ` (${res.effort_tag.replace(/^Effort\//, "")})` : "";
+}
+
 /** Button: Send attachments to Sift. */
 async function sendAttachmentsToSift(event) {
   try {
     const item = Office.context.mailbox.item;
-    const all = item.attachments || [];
-    const files = all.filter(
-      (a) =>
-        a.attachmentType === Office.MailboxEnums.AttachmentType.File &&
-        !a.isInline,
-    );
+    const files = await gatherAttachments(item);
     if (files.length === 0) {
       notify("No file attachments on this email.");
       return event.completed();
     }
-
-    const payload = { files: [], subject: item.subject || "" };
-    payload.email_body = await getBodyText(item);
-    for (const a of files) {
-      const content = await getAttachmentContent(item, a.id);
-      // File attachments come back base64-encoded (content.format === "base64").
-      payload.files.push({ name: a.name, content_base64: content.content });
-    }
-
-    const res = await postToSift("/addin/attachments", payload);
-    const n = payload.files.length;
+    const res = await postToSift("/addin/attachments", {
+      files,
+      subject: item.subject || "",
+      email_body: await getBodyText(item),
+    });
     const where = res && res.effort_tag
       ? `filed to ${res.effort_tag.replace(/^Effort\//, "")}`
       : "in the filing queue for review";
-    notify(`Sent ${n} attachment${n === 1 ? "" : "s"} to Sift — ${where}.`);
+    notify(`Sent ${files.length} attachment${files.length === 1 ? "" : "s"} to Sift — ${where}.`);
+  } catch (e) {
+    notify(e && e.message ? e.message : "Send to Sift failed.");
+  }
+  event.completed();
+}
+
+/** Button: Send email to Sift (records it as a note with a reopen link). */
+async function sendEmailToSift(event) {
+  try {
+    const item = Office.context.mailbox.item;
+    const payload = gatherEmail(item);
+    payload.email_body = await getBodyText(item);
+    const res = await postToSift("/addin/email", payload);
+    notify(`Saved this email to Sift${effortSuffix(res)}.`);
+  } catch (e) {
+    notify(e && e.message ? e.message : "Send to Sift failed.");
+  }
+  event.completed();
+}
+
+/** Button: Summarize email as a note in Sift. */
+async function summarizeEmailToNote(event) {
+  try {
+    const item = Office.context.mailbox.item;
+    const payload = gatherEmail(item);
+    payload.email_body = await getBodyText(item);
+    notify("Summarizing this email…");
+    const res = await postToSift("/addin/note", payload);
+    const kind = res && res.summarized ? "Summarized" : "Saved";
+    notify(`${kind} this email as a note in Sift${effortSuffix(res)}.`);
+  } catch (e) {
+    notify(e && e.message ? e.message : "Send to Sift failed.");
+  }
+  event.completed();
+}
+
+/** Button: Send everything — attachments filed + a summarized note. */
+async function sendEverythingToSift(event) {
+  try {
+    const item = Office.context.mailbox.item;
+    const email = gatherEmail(item);
+    email.email_body = await getBodyText(item);
+
+    const files = await gatherAttachments(item);
+    let filedNote = "";
+    if (files.length > 0) {
+      const fr = await postToSift("/addin/attachments", {
+        files,
+        subject: email.subject,
+        email_body: email.email_body,
+      });
+      filedNote = `${files.length} attachment${files.length === 1 ? "" : "s"} filed`;
+    }
+
+    notify("Summarizing this email…");
+    const nr = await postToSift("/addin/note", email);
+    const parts = [];
+    if (filedNote) parts.push(filedNote);
+    parts.push(nr && nr.summarized ? "summarized note created" : "note created");
+    notify(`Sent to Sift — ${parts.join(", ")}${effortSuffix(nr)}.`);
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
@@ -111,3 +221,6 @@ async function sendAttachmentsToSift(event) {
 
 // Register each function so the manifest's <FunctionName> can reach it.
 Office.actions.associate("sendAttachmentsToSift", sendAttachmentsToSift);
+Office.actions.associate("sendEmailToSift", sendEmailToSift);
+Office.actions.associate("summarizeEmailToNote", summarizeEmailToNote);
+Office.actions.associate("sendEverythingToSift", sendEverythingToSift);
