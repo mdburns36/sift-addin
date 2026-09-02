@@ -159,14 +159,17 @@ async function sendAttachmentsToSift(event) {
   event.completed();
 }
 
-/** Button: Send email to Sift (records it as a note with a reopen link). */
+/** Button: Send email to Sift (drops it in Sift's Emails inbox to triage). */
 async function sendEmailToSift(event) {
   try {
     const item = Office.context.mailbox.item;
     const payload = gatherEmail(item);
     payload.email_body = await getBodyText(item);
     const res = await postToSift("/addin/email", payload);
-    notify(`Saved this email to Sift${effortSuffix(res)}.`);
+    const where = res && res.effort_tag
+      ? `Sift's inbox and attached to ${res.effort_tag.replace(/^Effort\//, "")}`
+      : "Sift's Emails inbox";
+    notify(`Sent this email to ${where}.`);
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
@@ -197,20 +200,21 @@ async function sendEverythingToSift(event) {
     email.email_body = await getBodyText(item);
 
     const files = await gatherAttachments(item);
-    let filedNote = "";
+    const parts = [];
     if (files.length > 0) {
-      const fr = await postToSift("/addin/attachments", {
+      await postToSift("/addin/attachments", {
         files,
         subject: email.subject,
         email_body: email.email_body,
       });
-      filedNote = `${files.length} attachment${files.length === 1 ? "" : "s"} filed`;
+      parts.push(`${files.length} attachment${files.length === 1 ? "" : "s"} filed`);
     }
+
+    await postToSift("/addin/email", email);
+    parts.push("email in inbox");
 
     notify("Summarizing this email…");
     const nr = await postToSift("/addin/note", email);
-    const parts = [];
-    if (filedNote) parts.push(filedNote);
     parts.push(nr && nr.summarized ? "summarized note created" : "note created");
     notify(`Sent to Sift — ${parts.join(", ")}${effortSuffix(nr)}.`);
   } catch (e) {
