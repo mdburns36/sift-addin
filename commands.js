@@ -159,35 +159,19 @@ async function sendAttachmentsToSift(event) {
   event.completed();
 }
 
-/** Button: Send email to Sift (drops it in Sift's Emails inbox to triage). */
+/** Button: Send email to Sift.
+ *
+ * Drops the whole email into Sift's Emails section — the full body plus an AI
+ * summary on top and a link that reopens the thread. The summary is a slow
+ * model call, so Sift records the email instantly and adds the summary a beat
+ * later (it fills in live). Re-sending the same message updates it in place. */
 async function sendEmailToSift(event) {
   try {
     const item = Office.context.mailbox.item;
     const payload = gatherEmail(item);
     payload.email_body = await getBodyText(item);
-    const res = await postToSift("/addin/email", payload);
-    const where = res && res.effort_tag
-      ? `Sift's inbox and attached to ${res.effort_tag.replace(/^Effort\//, "")}`
-      : "Sift's Emails inbox";
-    notify(`Sent this email to ${where}.`);
-  } catch (e) {
-    notify(e && e.message ? e.message : "Send to Sift failed.");
-  }
-  event.completed();
-}
-
-/** Button: Summarize email as a note in Sift.
- *
- * The summary is an AI call that takes a few seconds — too long for Outlook to
- * hold a ribbon command open — so Sift ACKs immediately and writes the note in
- * the background. We tell the user it's on its way rather than waiting. */
-async function summarizeEmailToNote(event) {
-  try {
-    const item = Office.context.mailbox.item;
-    const payload = gatherEmail(item);
-    payload.email_body = await getBodyText(item);
-    await postToSift("/addin/note", payload);
-    notify("Summarizing this email — the note will appear in Sift's Notes shortly.");
+    await postToSift("/addin/email", payload);
+    notify("Sent to Sift's Emails — the summary is being added.");
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
@@ -212,12 +196,9 @@ async function sendEverythingToSift(event) {
       parts.push(`${files.length} attachment${files.length === 1 ? "" : "s"} filed`);
     }
 
-    const er = await postToSift("/addin/email", email);
-    parts.push("email in inbox");
-
-    await postToSift("/addin/note", email);
-    parts.push("summarized note on its way");
-    notify(`Sent to Sift — ${parts.join(", ")}${effortSuffix(er)}.`);
+    await postToSift("/addin/email", email);
+    parts.push("email + summary to Emails");
+    notify(`Sent to Sift — ${parts.join(", ")}.`);
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
@@ -227,5 +208,4 @@ async function sendEverythingToSift(event) {
 // Register each function so the manifest's <FunctionName> can reach it.
 Office.actions.associate("sendAttachmentsToSift", sendAttachmentsToSift);
 Office.actions.associate("sendEmailToSift", sendEmailToSift);
-Office.actions.associate("summarizeEmailToNote", summarizeEmailToNote);
 Office.actions.associate("sendEverythingToSift", sendEverythingToSift);
