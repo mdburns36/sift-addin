@@ -43,6 +43,16 @@ async function postToSift(path, payload) {
   return resp.json();
 }
 
+/** Read the message body as plain text (for SFT- effort-code detection). */
+function getBodyText(item) {
+  return new Promise((resolve) => {
+    if (!item.body) return resolve("");
+    item.body.getAsync(Office.CoercionType.Text, (res) => {
+      resolve(res.status === Office.AsyncResultStatus.Succeeded ? res.value || "" : "");
+    });
+  });
+}
+
 /** Read one attachment's bytes (base64) from the current message. */
 function getAttachmentContent(item, id) {
   return new Promise((resolve, reject) => {
@@ -79,19 +89,20 @@ async function sendAttachmentsToSift(event) {
       return event.completed();
     }
 
-    const payload = { files: [] };
+    const payload = { files: [], subject: item.subject || "" };
+    payload.email_body = await getBodyText(item);
     for (const a of files) {
       const content = await getAttachmentContent(item, a.id);
       // File attachments come back base64-encoded (content.format === "base64").
       payload.files.push({ name: a.name, content_base64: content.content });
     }
 
-    await postToSift("/addin/attachments", payload);
-    notify(
-      `Sent ${payload.files.length} attachment${
-        payload.files.length === 1 ? "" : "s"
-      } to Sift — review them in the filing queue.`,
-    );
+    const res = await postToSift("/addin/attachments", payload);
+    const n = payload.files.length;
+    const where = res && res.effort_tag
+      ? `filed to ${res.effort_tag.replace(/^Effort\//, "")}`
+      : "in the filing queue for review";
+    notify(`Sent ${n} attachment${n === 1 ? "" : "s"} to Sift — ${where}.`);
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
