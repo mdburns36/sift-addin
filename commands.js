@@ -176,16 +176,18 @@ async function sendEmailToSift(event) {
   event.completed();
 }
 
-/** Button: Summarize email as a note in Sift. */
+/** Button: Summarize email as a note in Sift.
+ *
+ * The summary is an AI call that takes a few seconds — too long for Outlook to
+ * hold a ribbon command open — so Sift ACKs immediately and writes the note in
+ * the background. We tell the user it's on its way rather than waiting. */
 async function summarizeEmailToNote(event) {
   try {
     const item = Office.context.mailbox.item;
     const payload = gatherEmail(item);
     payload.email_body = await getBodyText(item);
-    notify("Summarizing this email…");
-    const res = await postToSift("/addin/note", payload);
-    const kind = res && res.summarized ? "Summarized" : "Saved";
-    notify(`${kind} this email as a note in Sift${effortSuffix(res)}.`);
+    await postToSift("/addin/note", payload);
+    notify("Summarizing this email — the note will appear in Sift's Notes shortly.");
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
@@ -210,13 +212,12 @@ async function sendEverythingToSift(event) {
       parts.push(`${files.length} attachment${files.length === 1 ? "" : "s"} filed`);
     }
 
-    await postToSift("/addin/email", email);
+    const er = await postToSift("/addin/email", email);
     parts.push("email in inbox");
 
-    notify("Summarizing this email…");
-    const nr = await postToSift("/addin/note", email);
-    parts.push(nr && nr.summarized ? "summarized note created" : "note created");
-    notify(`Sent to Sift — ${parts.join(", ")}${effortSuffix(nr)}.`);
+    await postToSift("/addin/note", email);
+    parts.push("summarized note on its way");
+    notify(`Sent to Sift — ${parts.join(", ")}${effortSuffix(er)}.`);
   } catch (e) {
     notify(e && e.message ? e.message : "Send to Sift failed.");
   }
