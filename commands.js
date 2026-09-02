@@ -44,12 +44,43 @@ async function postToSift(path, payload) {
   return resp.json();
 }
 
-/** Read the message body as plain text (for SFT- code detection + summaries). */
+/** HTML → readable plain text, keeping the structure Outlook's own text
+ * coercion throws away: line breaks between header fields (From/Sent/To/…) and
+ * between paragraphs, and the reply-chain boundaries. */
+function htmlToText(html) {
+  let s = String(html || "");
+  s = s.replace(/<\s*(head|style|script)[\s\S]*?<\/\s*\1\s*>/gi, "");
+  s = s.replace(/<\s*br\s*\/?>/gi, "\n");
+  s = s.replace(/<\/\s*(p|div|tr|h[1-6]|blockquote)\s*>/gi, "\n");
+  s = s.replace(/<\s*li[^>]*>/gi, "\n• ");
+  s = s.replace(/<[^>]+>/g, "");
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n));
+  // Put each Outlook header field on its own line even if they came inline.
+  s = s.replace(/\s*(From|Sent|To|Cc|Bcc|Subject|Date|Reply-To):\s/g, "\n$1: ");
+  s = s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  return s.trim();
+}
+
+/** Read the message body as structured text (for storage, SFT- detection and
+ * the summary). Prefers HTML → text; falls back to the plain-text coercion. */
 function getBodyText(item) {
   return new Promise((resolve) => {
     if (!item.body) return resolve("");
-    item.body.getAsync(Office.CoercionType.Text, (res) => {
-      resolve(res.status === Office.AsyncResultStatus.Succeeded ? res.value || "" : "");
+    item.body.getAsync(Office.CoercionType.Html, (res) => {
+      if (res.status === Office.AsyncResultStatus.Succeeded && res.value) {
+        resolve(htmlToText(res.value));
+        return;
+      }
+      item.body.getAsync(Office.CoercionType.Text, (r2) => {
+        resolve(r2.status === Office.AsyncResultStatus.Succeeded ? r2.value || "" : "");
+      });
     });
   });
 }
